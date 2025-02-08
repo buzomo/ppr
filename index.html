@@ -22,6 +22,7 @@
       ></textarea>
       <div class="markdown-viewer" id="markdownViewer"></div>
     </div>
+    <input type="file" id="fileInput" style="display: none" />
     <script>
       (() => {
         const elements = [
@@ -29,12 +30,14 @@
           "datePickerContainer",
           "textBox",
           "markdownViewer",
+          "fileInput",
         ].reduce((acc, id) => ((acc[id] = document.getElementById(id)), acc), {}),
         {
           dateDisplay,
           datePickerContainer,
           textBox,
           markdownViewer,
+          fileInput,
         } = elements,
         state = {
           selectedDate: new Date(),
@@ -148,6 +151,103 @@
             const memo = textBox.value;
             const dateString = selectedDate.toISOString().split("T")[0];
             localStorage.setItem(dateString, memo);
+          },
+          handleTextBoxKeydown = (event) => {
+            const cursorPosition = textBox.selectionStart,
+              textBeforeCursor = textBox.value.substring(0, cursorPosition),
+              lines = textBeforeCursor.split("\n"),
+              currentLineIndex = lines.length - 1,
+              currentLine = lines[currentLineIndex],
+              listMatch = currentLine.match(/^(\s*)- /),
+              headerMatch = currentLine.match(/^#\s/);
+            if (event.key === "Tab") {
+              event.preventDefault();
+              const start = textBox.selectionStart,
+                end = textBox.selectionEnd,
+                before = textBox.value.slice(0, start),
+                after = textBox.value.slice(end),
+                lineStart = before.lastIndexOf("\n") + 1,
+                lineEnd = end + after.indexOf("\n"),
+                selectedLines = textBox.value.slice(lineStart, lineEnd).split("\n");
+              if (event.shiftKey) {
+                const newText = selectedLines
+                  .map((line) => (line.startsWith("  ") ? line.slice(2) : line))
+                  .join("\n");
+                textBox.value = textBox.value.slice(0, lineStart) + newText + textBox.value.slice(lineEnd);
+                const newCursorPosition = start - 2 * selectedLines.filter((line) => line.startsWith("  ")).length;
+                textBox.selectionStart = newCursorPosition;
+                textBox.selectionEnd = newCursorPosition;
+              } else {
+                const newText = selectedLines.map((line) => "  " + line).join("\n");
+                textBox.value = textBox.value.slice(0, lineStart) + newText + textBox.value.slice(lineEnd);
+                const newCursorPosition = start + 2 * selectedLines.length;
+                textBox.selectionStart = newCursorPosition;
+                textBox.selectionEnd = newCursorPosition;
+              }
+            }
+            if (event.key === "Enter") {
+              if (listMatch) {
+                event.preventDefault();
+                const indent = listMatch[1],
+                  textAfterCursor = textBox.value.substring(cursorPosition);
+                if (currentLine.trim() === "-") {
+                  lines.pop();
+                  const newText = lines.join("\n") + "\n" + textAfterCursor;
+                  textBox.value = newText;
+                  textBox.selectionStart = textBox.selectionEnd = cursorPosition - currentLine.length + 1;
+                } else {
+                  const newText = textBeforeCursor + "\n" + indent + "- " + textAfterCursor;
+                  textBox.value = newText;
+                  textBox.selectionStart = textBox.selectionEnd = cursorPosition + indent.length + 3;
+                }
+              } else if (headerMatch && currentLine.trim().length > 2) {
+                event.preventDefault();
+                const newText = textBeforeCursor + "\n- " + textBox.value.substring(cursorPosition);
+                textBox.value = newText;
+                textBox.selectionStart = textBox.selectionEnd = cursorPosition + 4;
+              } else if (currentLineIndex > 1) {
+                event.preventDefault();
+                const newText = textBeforeCursor + "\n\n# " + textBox.value.substring(cursorPosition);
+                textBox.value = newText;
+                textBox.selectionStart = textBox.selectionEnd = cursorPosition + 6;
+              }
+            } else if (event.key === "Backspace") {
+              if (currentLine.trim() === "-") {
+                event.preventDefault();
+                lines.pop();
+                const newText = lines.join("\n") + textBox.value.substring(cursorPosition);
+                textBox.value = newText;
+                textBox.selectionStart = textBox.selectionEnd = cursorPosition - currentLine.length;
+              }
+            } else if (event.key === "#" && currentLine === "") {
+              event.preventDefault();
+              const newText = textBeforeCursor + "# " + textBox.value.substring(cursorPosition);
+              textBox.value = newText;
+              textBox.selectionStart = textBox.selectionEnd = cursorPosition + 2;
+            }
+          },
+          handleDocumentKeydown = (event) => {
+            const { altKey, key, target } = event;
+            if (target.tagName.toLowerCase() !== "textarea") {
+              if (altKey) {
+                if (key === "s") {
+                  selectedDate = new Date();
+                  updateDateDisplay(selectedDate);
+                  highlightSelectedDate(
+                    document.querySelector(
+                      `.date-box[data-date="${selectedDate.toISOString().split("T")[0]}"]`
+                    )
+                  );
+                  revertToToday = true;
+                }
+              } else {
+                if (key === "Escape") {
+                  toggleElementDisplay(textBox, false);
+                  toggleElementDisplay(markdownViewer, true);
+                  markdownViewer.innerHTML = marked.parse(textBox.value);
+                }
+              }
+            }
           };
 
         textBox.addEventListener("input", () => {
@@ -169,85 +269,13 @@
           toggleElementDisplay(textBox, true);
           toggleElementDisplay(markdownViewer, false);
         }),
-        textBox.addEventListener("keydown", (event) => {
-          const cursorPosition = textBox.selectionStart,
-            textBeforeCursor = textBox.value.substring(0, cursorPosition),
-            lines = textBeforeCursor.split("\n"),
-            currentLineIndex = lines.length - 1,
-            currentLine = lines[currentLineIndex],
-            listMatch = currentLine.match(/^(\s*)- /),
-            headerMatch = currentLine.match(/^#\s/);
-          if (event.key === "Tab") {
-            event.preventDefault();
-            const start = textBox.selectionStart,
-              end = textBox.selectionEnd,
-              before = textBox.value.slice(0, start),
-              after = textBox.value.slice(end),
-              lineStart = before.lastIndexOf("\n") + 1,
-              lineEnd = end + after.indexOf("\n"),
-              selectedLines = textBox.value.slice(lineStart, lineEnd).split("\n");
-            if (event.shiftKey) {
-              const newText = selectedLines
-                .map((line) => (line.startsWith("  ") ? line.slice(2) : line))
-                .join("\n");
-              textBox.value = textBox.value.slice(0, lineStart) + newText + textBox.value.slice(lineEnd);
-              const newCursorPosition = start - 2 * selectedLines.filter((line) => line.startsWith("  ")).length;
-              textBox.selectionStart = newCursorPosition;
-              textBox.selectionEnd = newCursorPosition;
-            } else {
-              const newText = selectedLines.map((line) => "  " + line).join("\n");
-              textBox.value = textBox.value.slice(0, lineStart) + newText + textBox.value.slice(lineEnd);
-              const newCursorPosition = start + 2 * selectedLines.length;
-              textBox.selectionStart = newCursorPosition;
-              textBox.selectionEnd = newCursorPosition;
-            }
-          }
-          if (event.key === "Enter") {
-            if (listMatch) {
-              event.preventDefault();
-              const indent = listMatch[1],
-                textAfterCursor = textBox.value.substring(cursorPosition);
-              if (currentLine.trim() === "-") {
-                lines.pop();
-                const newText = lines.join("\n") + "\n" + textAfterCursor;
-                textBox.value = newText;
-                textBox.selectionStart = textBox.selectionEnd = cursorPosition - currentLine.length + 1;
-              } else {
-                const newText = textBeforeCursor + "\n" + indent + "- " + textAfterCursor;
-                textBox.value = newText;
-                textBox.selectionStart = textBox.selectionEnd = cursorPosition + indent.length + 3;
-              }
-            } else if (headerMatch && currentLine.trim().length > 2) {
-              event.preventDefault();
-              const newText = textBeforeCursor + "\n- " + textBox.value.substring(cursorPosition);
-              textBox.value = newText;
-              textBox.selectionStart = textBox.selectionEnd = cursorPosition + 4;
-            } else if (currentLineIndex > 1) {
-              event.preventDefault();
-              const newText = textBeforeCursor + "\n\n# " + textBox.value.substring(cursorPosition);
-              textBox.value = newText;
-              textBox.selectionStart = textBox.selectionEnd = cursorPosition + 6;
-            }
-          } else if (event.key === "Backspace") {
-            if (currentLine.trim() === "-") {
-              event.preventDefault();
-              lines.pop();
-              const newText = lines.join("\n") + textBox.value.substring(cursorPosition);
-              textBox.value = newText;
-              textBox.selectionStart = textBox.selectionEnd = cursorPosition - currentLine.length;
-            }
-          } else if (event.key === "#" && currentLine === "") {
-            event.preventDefault();
-            const newText = textBeforeCursor + "# " + textBox.value.substring(cursorPosition);
-            textBox.value = newText;
-            textBox.selectionStart = textBox.selectionEnd = cursorPosition + 2;
-          }
-        }),
+        textBox.addEventListener("keydown", handleTextBoxKeydown),
         markdownViewer.addEventListener("click", () => {
           toggleElementDisplay(textBox, true);
           toggleElementDisplay(markdownViewer, false);
           textBox.focus();
         }),
+        document.addEventListener("keydown", handleDocumentKeydown),
           document.addEventListener("DOMContentLoaded", () => {
             (clickedDate = new Date()), updateDateDisplay(clickedDate), renderCalendar(), updateEntries(), toggleElementDisplay(textBox, true), toggleElementDisplay(markdownViewer, true);
             textBox.focus();
