@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <link
+    rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📔</text></svg>"
+  />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>Daily Notes</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script src="holidays.js"></script> <!-- 追加 -->
+    <script src="closeddays.js"></script> <!-- 追加 -->
+
+  </head>
+  <body class="orange-theme">
+    <div class="container">
+      <div class="date-display" id="dateDisplay">
+        <span class="year" id="yearDisplay"></span>
+        <span class="month-day" id="monthDayDisplay"></span>
+        <span class="weekday" id="weekdayDisplay"></span>
+      </div>
+      <div class="date-picker-container" id="datePickerContainer"></div>
+      <textarea
+        class="text-box"
+        id="textBox"
+        placeholder="Type your thoughts here..."
+      ></textarea>
+      <div class="markdown-viewer" id="markdownViewer"></div>
+    </div>
+    <div id="modalTemplate" class="modal-template">
+      <div class="modal-content">
+        <h2 class="modal-title"></h2>
+        <div class="modal-body"></div>
+        <div class="modal-footer"></div>
+      </div>
+    </div>
+
+    <div id="searchModal" class="search-modal close-on-click-outside">
+      <div class="search-modal-content">
+        <input
+          type="text"
+          id="searchInput"
+          placeholder="検索キーワードを入力"
+        />
+        <ul id="searchResults"></ul>
+      </div>
+    </div>
+    <input type="file" id="fileInput" style="display: none" />
+    <script>
+      (() => {
+        const elements = [
+            "yearDisplay",
+            "monthDayDisplay",
+            "weekdayDisplay",
+            "datePickerContainer",
+            "textBox",
+            "markdownViewer",
+            "fileInput",
+            "searchModal",
+            "searchInput",
+            "searchResults",
+          ].reduce((acc, id) => ((acc[id] = document.getElementById(id)), acc), {}),
+          {
+            yearDisplay,
+            monthDayDisplay,
+            weekdayDisplay,
+            datePickerContainer,
+            textBox,
+            markdownViewer,
+            fileInput,
+            searchModal,
+            searchInput,
+            searchResults,
+          } = elements,
+          state = {
+            currentYear: new Date().getFullYear(),
+            selectedDate: new Date(),
+            clickedDate: undefined,
+            hoveredDate: undefined,
+            revertToToday: false,
+            saveTimer: undefined,
+            searchResultsData: [],
+            currentSearchResultIndex: -1,
+            wheelTimeout: undefined,
+          };
+        let {
+          currentYear,
+          selectedDate,
+          clickedDate,
+          hoveredDate,
+          revertToToday,
+          saveTimer,
+          searchResultsData,
+          currentSearchResultIndex,
+          wheelTimeout,
+        } = state;
+        const ONE_DAY_MS = 86400000,
+          updateDateDisplay = (date) => {
+            yearDisplay.textContent = date.getFullYear();
+            monthDayDisplay.textContent = `${String(date.getMonth() + 1).padStart(
+              2,
+              "0"
+            )}/${String(date.getDate()).padStart(2, "0")}`;
+            weekdayDisplay.textContent = date.toLocaleDateString("ja-JP", { weekday: "long" });
+            loadMemo(date);
+          },
+          loadMemo = (date) => {
+            const dateString = date.toISOString().split("T")[0];
+            let memo = localStorage.getItem(dateString) || "";
+            if (!memo && new Date().toISOString().split("T")[0] === dateString) {
+              memo = "# ";
+              localStorage.setItem(dateString, memo);
+            }
+            textBox.value = memo;
+            markdownViewer.innerHTML = marked.parse(memo);
+            markdownViewer.style.display = memo ? "block" : "none";
+            textBox.style.display = memo ? "none" : "block";
+          },
+          highlightSelectedDate = (element) => {
+            document
+              .querySelectorAll(".date-box")
+              .forEach((el) => el.classList.remove("selected")),
+              element && element.classList.add("selected");
+          },
+          toggleElementDisplay = (element, show) => {
+            element.style.display = show ? "block" : "none";
+          },
+          renderCalendar = (year) => {
+            const startDate = new Date(year, 0, 1),
+              endDate = new Date(year, 11, 31),
+              daysInYear = Math.ceil((endDate - startDate + ONE_DAY_MS) / ONE_DAY_MS);
+            datePickerContainer.innerHTML = "";
+            for (let i = 0; i < daysInYear; i++) {
+              const dateBox = document.createElement("div");
+              dateBox.classList.add("date-box");
+              const currentDate = new Date(startDate.getTime() + i * ONE_DAY_MS),
+                dateString = currentDate.toISOString().split("T")[0];
+              dateBox.dataset.date = dateString;
+              dateBox.style.width = `calc(100% / ${daysInYear})`;
+              datePickerContainer.appendChild(dateBox);
+              const dayOfWeek = currentDate.getDay();
+              if (dayOfWeek === 6) dateBox.classList.add("saturday");
+              else if (dayOfWeek === 0) dateBox.classList.add("sunday");
+              if (holidays[year] && holidays[year][dateString]) {
+                dateBox.classList.add("holiday");
+                dateBox.setAttribute("data-tooltip", holidays[year][dateString]);
+              }
+              if (closedDays[year] && closedDays[year][dateString]) {
+                dateBox.classList.add("closed");
+                dateBox.setAttribute("data-tooltip", closedDays[year][dateString]);
+              }
+              dateBox.addEventListener("mouseover", () => {
+                hoveredDate = new Date(dateBox.dataset.date);
+                updateDateDisplay(hoveredDate);
+                dateBox.classList.add("hovered");
+              });
+              dateBox.addEventListener("mouseout", () => {
+                dateBox.classList.remove("hovered");
+              });
+              dateBox.addEventListener("click", () => {
+                clickedDate = new Date(dateBox.dataset.date);
+                selectedDate = clickedDate;
+                currentYear = clickedDate.getFullYear();
+                renderCalendar(currentYear);
+                updateDateDisplay(clickedDate);
+                highlightSelectedDate(dateBox);
+              });
+              if (currentDate.toISOString().split("T")[0] === new Date().toISOString().split("T")[0]) {
+                dateBox.classList.add("today");
+              }
+            }
+            datePickerContainer.addEventListener("mouseleave", resetToToday);
+            updateEntries();
+          },
+          resetToToday = () => {
+            if (revertToToday || !clickedDate) {
+              selectedDate = new Date();
+              updateDateDisplay(selectedDate);
+              revertToToday = false;
+            } else if (clickedDate && hoveredDate !== clickedDate) {
+              updateDateDisplay(clickedDate);
+              highlightSelectedDate(
+                document.querySelector(
+                  `.date-box[data-date="${clickedDate.toISOString().split("T")[0]}"]`
+                )
+              );
+            }
+          },
+          updateEntries = () => {
+            document.querySelectorAll(".date-box").forEach((dateBox) => {
+              const dateString = dateBox.dataset.date;
+              if (localStorage.getItem(dateString) && localStorage.getItem(dateString).length > 0) {
+                dateBox.classList.add("has-entry");
+              } else {
+                dateBox.classList.remove("has-entry");
+              }
+            });
+          },
+          highlightSearchResults = (searchTerm) => {
+            const highlightedText = textBox.value.replace(
+              new RegExp(searchTerm, "g"),
+              `<span class="highlight">${searchTerm}</span>`
+            );
+            markdownViewer.innerHTML = marked.parse(highlightedText);
+            textBox.value = highlightedText;
+          },
+          getSurroundingText = (text, searchTerm) => {
+            const index = text.indexOf(searchTerm),
+              start = Math.max(index - 20, 0),
+              end = Math.min(index + searchTerm.length + 20, text.length);
+            return text.substring(start, end);
+          },
+          saveCurrentMemo = () => {
+            const memo = textBox.value;
+            const dateString = selectedDate.toISOString().split("T")[0];
+            localStorage.setItem(dateString, memo);
+          },
+          navigateDate = (days = 0, months = 0, years = 0, saveMemo = false) => {
+            if (saveMemo) saveCurrentMemo();
+            const previousYear = selectedDate.getFullYear();
+            selectedDate.setDate(selectedDate.getDate() + days);
+            selectedDate.setMonth(selectedDate.getMonth() + months);
+            selectedDate.setFullYear(selectedDate.getFullYear() + years);
+            const newYear = selectedDate.getFullYear();
+            if (previousYear !== newYear) renderCalendar(newYear);
+            const newDateString = selectedDate.toISOString().split("T")[0];
+            updateDateDisplay(selectedDate);
+            highlightSelectedDate(document.querySelector(`.date-box[data-date="${newDateString}"]`));
+          };
+        document.addEventListener("click", (event) => {
+          document
+            .querySelectorAll(".search-modal.close-on-click-outside")
+            .forEach((modal) => {
+              const modalContent = modal.querySelector(".search-modal-content");
+              if (modal.style.display === "block" && !modalContent.contains(event.target)) {
+                modal.style.display = "none";
+              }
+            });
+        }),
+        document.addEventListener("keydown", (event) => {
+          const { altKey, shiftKey, key, target } = event;
+          if (target.tagName.toLowerCase() !== "textarea") {
+            if (altKey) {
+              if (key === "o") fileInput.click();
+              if (key === "s") {
+                selectedDate = new Date();
+                updateDateDisplay(selectedDate);
+                highlightSelectedDate(
+                  document.querySelector(
+                    `.date-box[data-date="${selectedDate.toISOString().split("T")[0]}"]`
+                  )
+                );
+                revertToToday = true;
+              }
+              if (key === "k") {
+                toggleElementDisplay(searchModal, true);
+                searchInput.focus();
+              }
+              if (key === "ArrowUp") navigateDate(0, 0, -1);
+              if (key === "ArrowDown") navigateDate(0, 0, 1);
+            } else if (shiftKey) {
+              if (key === "ArrowUp") navigateDate(-28);
+              if (key === "ArrowDown") navigateDate(28);
+            } else {
+              if (searchModal.style.display === "block") {
+                if (key === "ArrowDown" || key === "ArrowUp") {
+                  currentSearchResultIndex =
+                    (currentSearchResultIndex + (key === "ArrowDown" ? 1 : -1) + searchResultsData.length) %
+                    searchResultsData.length;
+                  (() => {
+                    const searchResultItems = document.querySelectorAll("#searchResults li");
+                    searchResultItems.forEach((item, index) => {
+                      item.classList.toggle("selected", index === currentSearchResultIndex);
+                    });
+                    const selectedItem = searchResultItems[currentSearchResultIndex];
+                    if (selectedItem) {
+                      selectedItem.scrollIntoView({
+                        block: "center",
+                        behavior: "smooth",
+                      });
+                    }
+                  })();
+                }
+                if (key === "Enter" && currentSearchResultIndex >= 0 && currentSearchResultIndex < searchResultsData.length) {
+                  const selectedDate = new Date(searchResultsData[currentSearchResultIndex].date);
+                  toggleElementDisplay(searchModal, false);
+                  selectedDate = selectedDate;
+                  updateDateDisplay(selectedDate);
+                  highlightSearchResults(searchResultsData[currentSearchResultIndex].text);
+                  highlightSelectedDate(
+                    document.querySelector(
+                      `.date-box[data-date="${selectedDate.toISOString().split("T")[0]}"]`
+                    )
+                  );
+                  ((element, searchTerm) => {
+                    const innerHTML = element.innerHTML,
+                      regex = new RegExp(`(${searchTerm})`, "gi"),
+                      highlightedHTML = innerHTML.replace(regex, '<span class="highlight">$1</span>');
+                    element.innerHTML = highlightedHTML;
+                    const firstHighlight = element.querySelector(".highlight");
+                    if (firstHighlight) {
+                      firstHighlight.scrollIntoView({
+                        behavior: "smooth",
+                        block: "center",
+                      });
+                    }
+                  })(markdownViewer, searchInput.value);
+                }
+              } else {
+                if (key === "ArrowLeft") navigateDate(-1, 0, 0, true);
+                if (key === "ArrowRight") navigateDate(1, 0, 0, true);
+                if (key === "ArrowUp") navigateDate(-7);
+                if (key === "ArrowDown") navigateDate(7);
+                if (key === "Escape") {
+                  toggleElementDisplay(textBox, false);
+                  toggleElementDisplay(markdownViewer, true);
+                  markdownViewer.innerHTML = marked.parse(textBox.value);
+                }
+              }
+            }
+          }
+        }),
+        searchInput.addEventListener("input", () => {
+          const searchTerm = searchInput.value;
+          searchResultsData =
+            searchTerm.length > 0
+              ? ((term) =>
+                  Array.from({ length: localStorage.length })
+                    .map((_, index) => {
+                      const key = localStorage.key(index),
+                        value = localStorage.getItem(key);
+                      return value.includes(term)
+                        ? { date: key, text: getSurroundingText(value, term) }
+                        : null;
+                    })
+                    .filter(Boolean))(searchTerm)
+              : [];
+          ((results) => {
+            const searchTerm = searchInput.value,
+              regex = new RegExp(`(${searchTerm})`, "gi");
+            searchResults.innerHTML = results
+              .map((result, index) => {
+                const highlightedText = result.text.replace(
+                  regex,
+                  '<span class="highlight">$1</span>'
+                );
+                return `<li class="${
+                  0 === index ? "selected" : ""
+                }">\n            <span class="date">${new Date(
+                  result.date
+                ).toLocaleDateString("ja-JP", {
+                  year: "numeric",
+                  month: "2-digit",
+                  day: "2-digit",
+                  weekday: "long",
+                })}</span>\n            <span class="text">...${highlightedText}...</span>\n          </li>`;
+              })
+              .join("");
+            currentSearchResultIndex = results.length ? 0 : -1;
+          })(searchResultsData);
+        }),
+        searchResults.addEventListener("click", (event) => {
+          if ("li" === event.target.tagName.toLowerCase()) {
+            const index = Array.prototype.indexOf.call(
+                searchResults.children,
+                event.target.closest("li")
+              ),
+              selectedDate = new Date(searchResultsData[index].date);
+            toggleElementDisplay(searchModal, false);
+            selectedDate = selectedDate;
+            updateDateDisplay(selectedDate);
+            highlightSearchResults(searchResultsData[index].text);
+            highlightSelectedDate(
+              document.querySelector(
+                `.date-box[data-date="${selectedDate.toISOString().split("T")[0]}"]`
+              )
+            );
+          }
+        }),
+        textBox.addEventListener("input", () => {
+          const dateString = selectedDate.toISOString().split("T")[0];
+          textBox.value = textBox.value.replace(/^\s*$[\n\r]{1,}/gm, "");
+          localStorage.setItem(dateString, textBox.value);
+          updateEntries();
+          clearTimeout(saveTimer);
+          saveTimer = setTimeout(saveCurrentMemo, 3000);
+        }),
+        textBox.addEventListener("blur", () => {
+          saveCurrentMemo();
+          const memo = textBox.value;
+          toggleElementDisplay(textBox, false);
+          toggleElementDisplay(markdownViewer, true);
+          markdownViewer.innerHTML = marked.parse(memo);
+        }),
+        textBox.addEventListener("focus", () => {
+          toggleElementDisplay(textBox, true);
+          toggleElementDisplay(markdownViewer, false);
+        }),
+        textBox.addEventListener("keydown", (event) => {
+          const cursorPosition = textBox.selectionStart,
+            textBeforeCursor = textBox.value.substring(0, cursorPosition),
+            lines = textBeforeCursor.split("\n"),
+            currentLineIndex = lines.length - 1,
+            currentLine = lines[currentLineIndex],
+            listMatch = currentLine.match(/^(\s*)- /),
+            headerMatch = currentLine.match(/^#\s/);
+          if (event.key === "Tab") {
+            event.preventDefault();
+            const start = textBox.selectionStart,
+              end = textBox.selectionEnd,
+              before = textBox.value.slice(0, start),
+              after = textBox.value.slice(end),
+              lineStart = before.lastIndexOf("\n") + 1,
+              lineEnd = end + after.indexOf("\n"),
+              selectedLines = textBox.value.slice(lineStart, lineEnd).split("\n");
+            if (event.shiftKey) {
+              const newText = selectedLines
+                .map((line) => (line.startsWith("  ") ? line.slice(2) : line))
+                .join("\n");
+              textBox.value = textBox.value.slice(0, lineStart) + newText + textBox.value.slice(lineEnd);
+              const newCursorPosition = start - 2 * selectedLines.filter((line) => line.startsWith("  ")).length;
+              textBox.selectionStart = newCursorPosition;
+              textBox.selectionEnd = newCursorPosition;
+            } else {
+              const newText = selectedLines.map((line) => "  " + line).join("\n");
+              textBox.value = textBox.value.slice(0, lineStart) + newText + textBox.value.slice(lineEnd);
+              const newCursorPosition = start + 2 * selectedLines.length;
+              textBox.selectionStart = newCursorPosition;
+              textBox.selectionEnd = newCursorPosition;
+            }
+          }
+          if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
+            event.preventDefault();
+            const start = textBox.selectionStart,
+              end = textBox.selectionEnd,
+              before = textBox.value.slice(0, start),
+              after = textBox.value.slice(end),
+              lineStart = before.lastIndexOf("\n") + 1,
+              lineEnd = end + after.indexOf("\n"),
+              selectedLines = textBox.value.slice(lineStart, lineEnd),
+              fullText = textBox.value;
+            if (event.key === "ArrowUp") {
+              const previousLineStart = fullText.lastIndexOf("\n", lineStart - 2) + 1;
+              if (previousLineStart !== -1) {
+                const previousLineEnd = lineStart - 1,
+                  previousLine = fullText.slice(previousLineStart, previousLineEnd);
+                textBox.value = fullText.slice(0, previousLineStart) + selectedLines + "\n" + previousLine + fullText.slice(lineEnd + 1);
+                textBox.selectionStart = previousLineStart;
+                textBox.selectionEnd = previousLineStart + selectedLines.length - 1;
+              }
+            } else if (event.key === "ArrowDown") {
+              const nextLineStart = lineEnd + 1,
+                nextLineEnd = fullText.indexOf("\n", nextLineStart);
+              if (nextLineEnd !== -1) {
+                const nextLine = fullText.slice(nextLineStart, nextLineEnd);
+                textBox.value = fullText.slice(0, lineStart) + nextLine + "\n" + selectedLines + fullText.slice(nextLineEnd + 1);
+                textBox.selectionStart = lineStart + nextLine.length + 1;
+                textBox.selectionEnd = textBox.selectionStart + selectedLines.length - 1;
+              }
+            }
+          }
+          if (event.key === "Enter") {
+            if (listMatch) {
+              event.preventDefault();
+              const indent = listMatch[1],
+                textAfterCursor = textBox.value.substring(cursorPosition);
+              if (currentLine.trim() === "-") {
+                lines.pop();
+                const newText = lines.join("\n") + "\n" + textAfterCursor;
+                textBox.value = newText;
+                textBox.selectionStart = textBox.selectionEnd = cursorPosition - currentLine.length + 1;
+              } else {
+                const newText = textBeforeCursor + "\n" + indent + "- " + textAfterCursor;
+                textBox.value = newText;
+                textBox.selectionStart = textBox.selectionEnd = cursorPosition + indent.length + 3;
+              }
+            } else if (headerMatch && currentLine.trim().length > 2) {
+              event.preventDefault();
+              const newText = textBeforeCursor + "\n- " + textBox.value.substring(cursorPosition);
+              textBox.value = newText;
+              textBox.selectionStart = textBox.selectionEnd = cursorPosition + 4;
+            } else if (currentLineIndex > 1) {
+              event.preventDefault();
+              const newText = textBeforeCursor + "\n\n# " + textBox.value.substring(cursorPosition);
+              textBox.value = newText;
+              textBox.selectionStart = textBox.selectionEnd = cursorPosition + 6;
+            }
+          } else if (event.key === "Backspace") {
+            if (currentLine.trim() === "-") {
+              event.preventDefault();
+              lines.pop();
+              const newText = lines.join("\n") + textBox.value.substring(cursorPosition);
+              textBox.value = newText;
+              textBox.selectionStart = textBox.selectionEnd = cursorPosition - currentLine.length;
+            }
+          } else if (event.key === "#" && currentLine === "") {
+            event.preventDefault();
+            const newText = textBeforeCursor + "# " + textBox.value.substring(cursorPosition);
+            textBox.value = newText;
+            textBox.selectionStart = textBox.selectionEnd = cursorPosition + 2;
+          }
+        }),
+        markdownViewer.addEventListener("click", () => {
+          toggleElementDisplay(textBox, true);
+          toggleElementDisplay(markdownViewer, false);
+          textBox.focus();
+        }),
+        document.addEventListener("keydown", (event) => {
+            if (event.key === "Escape") {
+              saveCurrentMemo();
+              toggleElementDisplay(textBox, false);
+              toggleElementDisplay(markdownViewer, true);
+              markdownViewer.innerHTML = marked.parse(textBox.value);
+            }
+          }),
+          fileInput.addEventListener("change", (event) => {
+            const file = event.target.files[0];
+            if (file) {
+              const reader = new FileReader();
+              reader.onload = (e) => {
+                const data = JSON.parse(e.target.result);
+                Object.keys(data).forEach((key) => localStorage.setItem(key, data[key]));
+                location.reload();
+                updateEntries();
+              };
+              reader.readAsText(file);
+            }
+          }),
+          datePickerContainer.addEventListener("wheel", (event) => {
+            clearTimeout(wheelTimeout);
+            currentYear += event.deltaY < 0 ? -1 : 1;
+            renderCalendar(currentYear);
+          }),
+          document.addEventListener("keydown", function (event) {
+            if (event.key === "e" &&
+              textBox.style.display === "none" &&
+              searchModal.style.display !== "block") {
+              event.preventDefault();
+              toggleElementDisplay(textBox, true);
+              toggleElementDisplay(markdownViewer, false);
+              textBox.focus();
+            }
+          }),
+          document.addEventListener("DOMContentLoaded", () => {
+            (clickedDate = new Date()), updateDateDisplay(clickedDate), renderCalendar(currentYear), updateEntries(), toggleElementDisplay(textBox, true), toggleElementDisplay(markdownViewer, true);
+            textBox.focus();
+            const dateDisplay = document.getElementById("dateDisplay");
+            function setTitle() {
+              document.title = dateDisplay.innerText;
+            }
+            setTitle();
+            const observer = new MutationObserver(setTitle);
+            observer.observe(dateDisplay, { childList: true, subtree: true });
+          });
+      })();
+    </script>
+  </body>
+</html>
