@@ -37,17 +37,6 @@
       </div>
     </div>
 
-    <div id="searchModal" class="search-modal close-on-click-outside">
-      <div class="search-modal-content">
-        <input
-          type="text"
-          id="searchInput"
-          placeholder="検索キーワードを入力"
-        />
-        <ul id="searchResults"></ul>
-      </div>
-    </div>
-    <input type="file" id="fileInput" style="display: none" />
     <script>
       (() => {
         const elements = [
@@ -57,10 +46,6 @@
             "datePickerContainer",
             "textBox",
             "markdownViewer",
-            "fileInput",
-            "searchModal",
-            "searchInput",
-            "searchResults",
           ].reduce((acc, id) => ((acc[id] = document.getElementById(id)), acc), {}),
           {
             yearDisplay,
@@ -69,10 +54,6 @@
             datePickerContainer,
             textBox,
             markdownViewer,
-            fileInput,
-            searchModal,
-            searchInput,
-            searchResults,
           } = elements,
           state = {
             currentYear: new Date().getFullYear(),
@@ -81,8 +62,6 @@
             hoveredDate: undefined,
             revertToToday: false,
             saveTimer: undefined,
-            searchResultsData: [],
-            currentSearchResultIndex: -1,
             wheelTimeout: undefined,
           };
         let {
@@ -92,18 +71,12 @@
           hoveredDate,
           revertToToday,
           saveTimer,
-          searchResultsData,
-          currentSearchResultIndex,
           wheelTimeout,
         } = state;
         const ONE_DAY_MS = 86400000,
           updateDateDisplay = (date) => {
-            yearDisplay.textContent = date.getFullYear();
-            monthDayDisplay.textContent = `${String(date.getMonth() + 1).padStart(
-              2,
-              "0"
-            )}/${String(date.getDate()).padStart(2, "0")}`;
-            weekdayDisplay.textContent = date.toLocaleDateString("ja-JP", { weekday: "long" });
+            yearDisplay.textContent = date.getFullYear()+"-"+String(date.getMonth() + 1).padStart(2, "0")+"-"+String(date.getDate()).padStart(2, "0");
+            weekdayDisplay.textContent = date.toLocaleDateString("ja-JP", { weekday: "short" });
             loadMemo(date);
           },
           loadMemo = (date) => {
@@ -198,52 +171,16 @@
               }
             });
           },
-          highlightSearchResults = (searchTerm) => {
-            const highlightedText = textBox.value.replace(
-              new RegExp(searchTerm, "g"),
-              `<span class="highlight">${searchTerm}</span>`
-            );
-            markdownViewer.innerHTML = marked.parse(highlightedText);
-            textBox.value = highlightedText;
-          },
-          getSurroundingText = (text, searchTerm) => {
-            const index = text.indexOf(searchTerm),
-              start = Math.max(index - 20, 0),
-              end = Math.min(index + searchTerm.length + 20, text.length);
-            return text.substring(start, end);
-          },
           saveCurrentMemo = () => {
             const memo = textBox.value;
             const dateString = selectedDate.toISOString().split("T")[0];
             localStorage.setItem(dateString, memo);
-          },
-          navigateDate = (days = 0, months = 0, years = 0, saveMemo = false) => {
-            if (saveMemo) saveCurrentMemo();
-            const previousYear = selectedDate.getFullYear();
-            selectedDate.setDate(selectedDate.getDate() + days);
-            selectedDate.setMonth(selectedDate.getMonth() + months);
-            selectedDate.setFullYear(selectedDate.getFullYear() + years);
-            const newYear = selectedDate.getFullYear();
-            if (previousYear !== newYear) renderCalendar(newYear);
-            const newDateString = selectedDate.toISOString().split("T")[0];
-            updateDateDisplay(selectedDate);
-            highlightSelectedDate(document.querySelector(`.date-box[data-date="${newDateString}"]`));
           };
-        document.addEventListener("click", (event) => {
-          document
-            .querySelectorAll(".search-modal.close-on-click-outside")
-            .forEach((modal) => {
-              const modalContent = modal.querySelector(".search-modal-content");
-              if (modal.style.display === "block" && !modalContent.contains(event.target)) {
-                modal.style.display = "none";
-              }
-            });
-        }),
+
         document.addEventListener("keydown", (event) => {
-          const { altKey, shiftKey, key, target } = event;
+          const { altKey, key, target } = event;
           if (target.tagName.toLowerCase() !== "textarea") {
             if (altKey) {
-              if (key === "o") fileInput.click();
               if (key === "s") {
                 selectedDate = new Date();
                 updateDateDisplay(selectedDate);
@@ -254,129 +191,13 @@
                 );
                 revertToToday = true;
               }
-              if (key === "k") {
-                toggleElementDisplay(searchModal, true);
-                searchInput.focus();
-              }
-              if (key === "ArrowUp") navigateDate(0, 0, -1);
-              if (key === "ArrowDown") navigateDate(0, 0, 1);
-            } else if (shiftKey) {
-              if (key === "ArrowUp") navigateDate(-28);
-              if (key === "ArrowDown") navigateDate(28);
             } else {
-              if (searchModal.style.display === "block") {
-                if (key === "ArrowDown" || key === "ArrowUp") {
-                  currentSearchResultIndex =
-                    (currentSearchResultIndex + (key === "ArrowDown" ? 1 : -1) + searchResultsData.length) %
-                    searchResultsData.length;
-                  (() => {
-                    const searchResultItems = document.querySelectorAll("#searchResults li");
-                    searchResultItems.forEach((item, index) => {
-                      item.classList.toggle("selected", index === currentSearchResultIndex);
-                    });
-                    const selectedItem = searchResultItems[currentSearchResultIndex];
-                    if (selectedItem) {
-                      selectedItem.scrollIntoView({
-                        block: "center",
-                        behavior: "smooth",
-                      });
-                    }
-                  })();
-                }
-                if (key === "Enter" && currentSearchResultIndex >= 0 && currentSearchResultIndex < searchResultsData.length) {
-                  const selectedDate = new Date(searchResultsData[currentSearchResultIndex].date);
-                  toggleElementDisplay(searchModal, false);
-                  selectedDate = selectedDate;
-                  updateDateDisplay(selectedDate);
-                  highlightSearchResults(searchResultsData[currentSearchResultIndex].text);
-                  highlightSelectedDate(
-                    document.querySelector(
-                      `.date-box[data-date="${selectedDate.toISOString().split("T")[0]}"]`
-                    )
-                  );
-                  ((element, searchTerm) => {
-                    const innerHTML = element.innerHTML,
-                      regex = new RegExp(`(${searchTerm})`, "gi"),
-                      highlightedHTML = innerHTML.replace(regex, '<span class="highlight">$1</span>');
-                    element.innerHTML = highlightedHTML;
-                    const firstHighlight = element.querySelector(".highlight");
-                    if (firstHighlight) {
-                      firstHighlight.scrollIntoView({
-                        behavior: "smooth",
-                        block: "center",
-                      });
-                    }
-                  })(markdownViewer, searchInput.value);
-                }
-              } else {
-                if (key === "ArrowLeft") navigateDate(-1, 0, 0, true);
-                if (key === "ArrowRight") navigateDate(1, 0, 0, true);
-                if (key === "ArrowUp") navigateDate(-7);
-                if (key === "ArrowDown") navigateDate(7);
-                if (key === "Escape") {
-                  toggleElementDisplay(textBox, false);
-                  toggleElementDisplay(markdownViewer, true);
-                  markdownViewer.innerHTML = marked.parse(textBox.value);
-                }
+              if (key === "Escape") {
+                toggleElementDisplay(textBox, false);
+                toggleElementDisplay(markdownViewer, true);
+                markdownViewer.innerHTML = marked.parse(textBox.value);
               }
             }
-          }
-        }),
-        searchInput.addEventListener("input", () => {
-          const searchTerm = searchInput.value;
-          searchResultsData =
-            searchTerm.length > 0
-              ? ((term) =>
-                  Array.from({ length: localStorage.length })
-                    .map((_, index) => {
-                      const key = localStorage.key(index),
-                        value = localStorage.getItem(key);
-                      return value.includes(term)
-                        ? { date: key, text: getSurroundingText(value, term) }
-                        : null;
-                    })
-                    .filter(Boolean))(searchTerm)
-              : [];
-          ((results) => {
-            const searchTerm = searchInput.value,
-              regex = new RegExp(`(${searchTerm})`, "gi");
-            searchResults.innerHTML = results
-              .map((result, index) => {
-                const highlightedText = result.text.replace(
-                  regex,
-                  '<span class="highlight">$1</span>'
-                );
-                return `<li class="${
-                  0 === index ? "selected" : ""
-                }">\n            <span class="date">${new Date(
-                  result.date
-                ).toLocaleDateString("ja-JP", {
-                  year: "numeric",
-                  month: "2-digit",
-                  day: "2-digit",
-                  weekday: "long",
-                })}</span>\n            <span class="text">...${highlightedText}...</span>\n          </li>`;
-              })
-              .join("");
-            currentSearchResultIndex = results.length ? 0 : -1;
-          })(searchResultsData);
-        }),
-        searchResults.addEventListener("click", (event) => {
-          if ("li" === event.target.tagName.toLowerCase()) {
-            const index = Array.prototype.indexOf.call(
-                searchResults.children,
-                event.target.closest("li")
-              ),
-              selectedDate = new Date(searchResultsData[index].date);
-            toggleElementDisplay(searchModal, false);
-            selectedDate = selectedDate;
-            updateDateDisplay(selectedDate);
-            highlightSearchResults(searchResultsData[index].text);
-            highlightSelectedDate(
-              document.querySelector(
-                `.date-box[data-date="${selectedDate.toISOString().split("T")[0]}"]`
-              )
-            );
           }
         }),
         textBox.addEventListener("input", () => {
@@ -515,19 +336,6 @@
               markdownViewer.innerHTML = marked.parse(textBox.value);
             }
           }),
-          fileInput.addEventListener("change", (event) => {
-            const file = event.target.files[0];
-            if (file) {
-              const reader = new FileReader();
-              reader.onload = (e) => {
-                const data = JSON.parse(e.target.result);
-                Object.keys(data).forEach((key) => localStorage.setItem(key, data[key]));
-                location.reload();
-                updateEntries();
-              };
-              reader.readAsText(file);
-            }
-          }),
           datePickerContainer.addEventListener("wheel", (event) => {
             clearTimeout(wheelTimeout);
             currentYear += event.deltaY < 0 ? -1 : 1;
@@ -535,8 +343,7 @@
           }),
           document.addEventListener("keydown", function (event) {
             if (event.key === "e" &&
-              textBox.style.display === "none" &&
-              searchModal.style.display !== "block") {
+              textBox.style.display === "none") {
               event.preventDefault();
               toggleElementDisplay(textBox, true);
               toggleElementDisplay(markdownViewer, false);
