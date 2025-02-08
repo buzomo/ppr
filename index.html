@@ -78,8 +78,14 @@
               .forEach((el) => el.classList.remove("selected")),
               element && element.classList.add("selected");
           },
-          toggleElementDisplay = (element, show) => {
-            element.style.display = show ? "block" : "none";
+          changeMode = (mode) => {
+            if (mode === "textbox") {
+              textBox.style.display = "block";
+              markdownViewer.style.display = "none";
+            } else if (mode === "marked") {
+              textBox.style.display = "none";
+              markdownViewer.style.display = "block";
+            }
           },
           renderCalendar = () => {
             datePickerContainer.innerHTML = "";
@@ -242,8 +248,7 @@
                 }
               } else {
                 if (key === "Escape") {
-                  toggleElementDisplay(textBox, false);
-                  toggleElementDisplay(markdownViewer, true);
+                  changeMode("marked");
                   markdownViewer.innerHTML = marked.parse(textBox.value);
                 }
               }
@@ -261,23 +266,20 @@
         textBox.addEventListener("blur", () => {
           saveCurrentMemo();
           const memo = textBox.value;
-          toggleElementDisplay(textBox, false);
-          toggleElementDisplay(markdownViewer, true);
+          changeMode("marked");
           markdownViewer.innerHTML = marked.parse(memo);
         }),
         textBox.addEventListener("focus", () => {
-          toggleElementDisplay(textBox, true);
-          toggleElementDisplay(markdownViewer, false);
+          changeMode("textbox");
         }),
         textBox.addEventListener("keydown", handleTextBoxKeydown),
         markdownViewer.addEventListener("click", () => {
-          toggleElementDisplay(textBox, true);
-          toggleElementDisplay(markdownViewer, false);
+          changeMode("textbox");
           textBox.focus();
         }),
         document.addEventListener("keydown", handleDocumentKeydown),
           document.addEventListener("DOMContentLoaded", () => {
-            (clickedDate = new Date()), updateDateDisplay(clickedDate), renderCalendar(), updateEntries(), toggleElementDisplay(textBox, true), toggleElementDisplay(markdownViewer, true);
+            (clickedDate = new Date()), updateDateDisplay(clickedDate), renderCalendar(), updateEntries(), changeMode("textbox");
             textBox.focus();
             const dateDisplay = document.getElementById("dateDisplay");
             function setTitle() {
