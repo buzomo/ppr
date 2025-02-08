@@ -2,10 +2,7 @@
 <html lang="ja">
   <head>
     <meta charset="UTF-8" />
-    <link
-    rel="icon"
-    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📔</text></svg>"
-  />
+    <link    rel="icon"   href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>📔</text></svg>"  />
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>Daily Notes</title>
     <link rel="stylesheet" href="styles.css">
@@ -16,11 +13,7 @@
   </head>
   <body class="orange-theme">
     <div class="container">
-      <div class="date-display" id="dateDisplay">
-        <span class="year" id="yearDisplay"></span>
-        <span class="month-day" id="monthDayDisplay"></span>
-        <span class="weekday" id="weekdayDisplay"></span>
-      </div>
+      <div class="date-display" id="dateDisplay"></div>
       <div class="date-picker-container" id="datePickerContainer"></div>
       <textarea
         class="text-box"
@@ -29,43 +22,29 @@
       ></textarea>
       <div class="markdown-viewer" id="markdownViewer"></div>
     </div>
-    <div id="modalTemplate" class="modal-template">
-      <div class="modal-content">
-        <h2 class="modal-title"></h2>
-        <div class="modal-body"></div>
-        <div class="modal-footer"></div>
-      </div>
-    </div>
-
     <script>
       (() => {
         const elements = [
-            "yearDisplay",
-            "monthDayDisplay",
-            "weekdayDisplay",
-            "datePickerContainer",
-            "textBox",
-            "markdownViewer",
-          ].reduce((acc, id) => ((acc[id] = document.getElementById(id)), acc), {}),
-          {
-            yearDisplay,
-            monthDayDisplay,
-            weekdayDisplay,
-            datePickerContainer,
-            textBox,
-            markdownViewer,
-          } = elements,
-          state = {
-            currentYear: new Date().getFullYear(),
-            selectedDate: new Date(),
-            clickedDate: undefined,
-            hoveredDate: undefined,
-            revertToToday: false,
-            saveTimer: undefined,
-            wheelTimeout: undefined,
-          };
+          "dateDisplay",
+          "datePickerContainer",
+          "textBox",
+          "markdownViewer",
+        ].reduce((acc, id) => ((acc[id] = document.getElementById(id)), acc), {}),
+        {
+          dateDisplay,
+          datePickerContainer,
+          textBox,
+          markdownViewer,
+        } = elements,
+        state = {
+          selectedDate: new Date(),
+          clickedDate: undefined,
+          hoveredDate: undefined,
+          revertToToday: false,
+          saveTimer: undefined,
+          wheelTimeout: undefined,
+        };
         let {
-          currentYear,
           selectedDate,
           clickedDate,
           hoveredDate,
@@ -75,8 +54,7 @@
         } = state;
         const ONE_DAY_MS = 86400000,
           updateDateDisplay = (date) => {
-            yearDisplay.textContent = date.getFullYear()+"-"+String(date.getMonth() + 1).padStart(2, "0")+"-"+String(date.getDate()).padStart(2, "0");
-            weekdayDisplay.textContent = date.toLocaleDateString("ja-JP", { weekday: "short" });
+            dateDisplay.textContent = date.getFullYear()+"-"+String(date.getMonth() + 1).padStart(2, "0")+"-"+String(date.getDate()).padStart(2, "0")+" "+date.toLocaleDateString("ja-JP", { weekday: "short" });
             loadMemo(date);
           },
           loadMemo = (date) => {
@@ -100,29 +78,26 @@
           toggleElementDisplay = (element, show) => {
             element.style.display = show ? "block" : "none";
           },
-          renderCalendar = (year) => {
-            const startDate = new Date(year, 0, 1),
-              endDate = new Date(year, 11, 31),
-              daysInYear = Math.ceil((endDate - startDate + ONE_DAY_MS) / ONE_DAY_MS);
+          renderCalendar = () => {
             datePickerContainer.innerHTML = "";
-            for (let i = 0; i < daysInYear; i++) {
+            for (let i = 0; i < localStorage.length; i++) {
+              const dateString = localStorage.key(i);
               const dateBox = document.createElement("div");
               dateBox.classList.add("date-box");
-              const currentDate = new Date(startDate.getTime() + i * ONE_DAY_MS),
-                dateString = currentDate.toISOString().split("T")[0];
               dateBox.dataset.date = dateString;
-              dateBox.style.width = `calc(100% / ${daysInYear})`;
+              dateBox.style.width = `calc(100% / ${localStorage.length})`;
               datePickerContainer.appendChild(dateBox);
-              const dayOfWeek = currentDate.getDay();
+              const currentDate = new Date(dateString),
+                dayOfWeek = currentDate.getDay();
               if (dayOfWeek === 6) dateBox.classList.add("saturday");
               else if (dayOfWeek === 0) dateBox.classList.add("sunday");
-              if (holidays[year] && holidays[year][dateString]) {
+              if (holidays[currentDate.getFullYear()] && holidays[currentDate.getFullYear()][dateString]) {
                 dateBox.classList.add("holiday");
-                dateBox.setAttribute("data-tooltip", holidays[year][dateString]);
+                dateBox.setAttribute("data-tooltip", holidays[currentDate.getFullYear()][dateString]);
               }
-              if (closedDays[year] && closedDays[year][dateString]) {
+              if (closedDays[currentDate.getFullYear()] && closedDays[currentDate.getFullYear()][dateString]) {
                 dateBox.classList.add("closed");
-                dateBox.setAttribute("data-tooltip", closedDays[year][dateString]);
+                dateBox.setAttribute("data-tooltip", closedDays[currentDate.getFullYear()][dateString]);
               }
               dateBox.addEventListener("mouseover", () => {
                 hoveredDate = new Date(dateBox.dataset.date);
@@ -135,12 +110,10 @@
               dateBox.addEventListener("click", () => {
                 clickedDate = new Date(dateBox.dataset.date);
                 selectedDate = clickedDate;
-                currentYear = clickedDate.getFullYear();
-                renderCalendar(currentYear);
                 updateDateDisplay(clickedDate);
                 highlightSelectedDate(dateBox);
               });
-              if (currentDate.toISOString().split("T")[0] === new Date().toISOString().split("T")[0]) {
+              if (dateString === new Date().toISOString().split("T")[0]) {
                 dateBox.classList.add("today");
               }
             }
@@ -177,29 +150,6 @@
             localStorage.setItem(dateString, memo);
           };
 
-        document.addEventListener("keydown", (event) => {
-          const { altKey, key, target } = event;
-          if (target.tagName.toLowerCase() !== "textarea") {
-            if (altKey) {
-              if (key === "s") {
-                selectedDate = new Date();
-                updateDateDisplay(selectedDate);
-                highlightSelectedDate(
-                  document.querySelector(
-                    `.date-box[data-date="${selectedDate.toISOString().split("T")[0]}"]`
-                  )
-                );
-                revertToToday = true;
-              }
-            } else {
-              if (key === "Escape") {
-                toggleElementDisplay(textBox, false);
-                toggleElementDisplay(markdownViewer, true);
-                markdownViewer.innerHTML = marked.parse(textBox.value);
-              }
-            }
-          }
-        }),
         textBox.addEventListener("input", () => {
           const dateString = selectedDate.toISOString().split("T")[0];
           textBox.value = textBox.value.replace(/^\s*$[\n\r]{1,}/gm, "");
@@ -252,36 +202,6 @@
               textBox.selectionEnd = newCursorPosition;
             }
           }
-          if (event.altKey && (event.key === "ArrowUp" || event.key === "ArrowDown")) {
-            event.preventDefault();
-            const start = textBox.selectionStart,
-              end = textBox.selectionEnd,
-              before = textBox.value.slice(0, start),
-              after = textBox.value.slice(end),
-              lineStart = before.lastIndexOf("\n") + 1,
-              lineEnd = end + after.indexOf("\n"),
-              selectedLines = textBox.value.slice(lineStart, lineEnd),
-              fullText = textBox.value;
-            if (event.key === "ArrowUp") {
-              const previousLineStart = fullText.lastIndexOf("\n", lineStart - 2) + 1;
-              if (previousLineStart !== -1) {
-                const previousLineEnd = lineStart - 1,
-                  previousLine = fullText.slice(previousLineStart, previousLineEnd);
-                textBox.value = fullText.slice(0, previousLineStart) + selectedLines + "\n" + previousLine + fullText.slice(lineEnd + 1);
-                textBox.selectionStart = previousLineStart;
-                textBox.selectionEnd = previousLineStart + selectedLines.length - 1;
-              }
-            } else if (event.key === "ArrowDown") {
-              const nextLineStart = lineEnd + 1,
-                nextLineEnd = fullText.indexOf("\n", nextLineStart);
-              if (nextLineEnd !== -1) {
-                const nextLine = fullText.slice(nextLineStart, nextLineEnd);
-                textBox.value = fullText.slice(0, lineStart) + nextLine + "\n" + selectedLines + fullText.slice(nextLineEnd + 1);
-                textBox.selectionStart = lineStart + nextLine.length + 1;
-                textBox.selectionEnd = textBox.selectionStart + selectedLines.length - 1;
-              }
-            }
-          }
           if (event.key === "Enter") {
             if (listMatch) {
               event.preventDefault();
@@ -328,30 +248,8 @@
           toggleElementDisplay(markdownViewer, false);
           textBox.focus();
         }),
-        document.addEventListener("keydown", (event) => {
-            if (event.key === "Escape") {
-              saveCurrentMemo();
-              toggleElementDisplay(textBox, false);
-              toggleElementDisplay(markdownViewer, true);
-              markdownViewer.innerHTML = marked.parse(textBox.value);
-            }
-          }),
-          datePickerContainer.addEventListener("wheel", (event) => {
-            clearTimeout(wheelTimeout);
-            currentYear += event.deltaY < 0 ? -1 : 1;
-            renderCalendar(currentYear);
-          }),
-          document.addEventListener("keydown", function (event) {
-            if (event.key === "e" &&
-              textBox.style.display === "none") {
-              event.preventDefault();
-              toggleElementDisplay(textBox, true);
-              toggleElementDisplay(markdownViewer, false);
-              textBox.focus();
-            }
-          }),
           document.addEventListener("DOMContentLoaded", () => {
-            (clickedDate = new Date()), updateDateDisplay(clickedDate), renderCalendar(currentYear), updateEntries(), toggleElementDisplay(textBox, true), toggleElementDisplay(markdownViewer, true);
+            (clickedDate = new Date()), updateDateDisplay(clickedDate), renderCalendar(), updateEntries(), toggleElementDisplay(textBox, true), toggleElementDisplay(markdownViewer, true);
             textBox.focus();
             const dateDisplay = document.getElementById("dateDisplay");
             function setTitle() {
@@ -360,6 +258,14 @@
             setTitle();
             const observer = new MutationObserver(setTitle);
             observer.observe(dateDisplay, { childList: true, subtree: true });
+
+            // LocalStorageの空の値を削除
+            for (let i = 0; i < localStorage.length; i++) {
+              const key = localStorage.key(i);
+              if (localStorage.getItem(key) === "") {
+                localStorage.removeItem(key);
+              }
+            }
           });
       })();
     </script>
